@@ -17,7 +17,7 @@ uvx install jenkins-mcp
 ```
 
 ## Configuration
-Create a Windsurf MCP configuration in `~/.codeium/windsurf/mcp_config.json`:
+Add the MCP server using the following JSON configuration snippet:
 
 ```json
 {
@@ -46,4 +46,5 @@ Create a Windsurf MCP configuration in `~/.codeium/windsurf/mcp_config.json`:
 uv pip install -r requirements.txt
 
 # Run in dev mode with Inspector
-mcp dev -p jenkins-mcp
+mcp dev jenkins_mcp/server.py
+```
