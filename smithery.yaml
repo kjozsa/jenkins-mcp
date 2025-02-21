@@ -1,0 +1,25 @@
+# Smithery configuration file: https://smithery.ai/docs/config#smitheryyaml
+
+startCommand:
+  type: stdio
+  configSchema:
+    # JSON Schema defining the configuration options for the MCP.
+    type: object
+    required:
+      - jenkinsUrl
+      - jenkinsUsername
+      - jenkinsPassword
+    properties:
+      jenkinsUrl:
+        type: string
+        description: The URL for the Jenkins server.
+      jenkinsUsername:
+        type: string
+        description: The username for accessing the Jenkins server.
+      jenkinsPassword:
+        type: string
+        description: The password for accessing the Jenkins server.
+  commandFunction:
+    # A function that produces the CLI command to start the MCP on stdio.
+    |-
+    (config) => ({ command: 'jenkins-mcp', env: { JENKINS_URL: config.jenkinsUrl, JENKINS_USERNAME: config.jenkinsUsername, JENKINS_PASSWORD: config.jenkinsPassword } })
