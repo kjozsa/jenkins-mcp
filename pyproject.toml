@@ -1,0 +1,23 @@
+[project]
+name = 'jenkins-mcp'
+version = '0.1.0'
+description = 'MCP server for managing Jenkins operations'
+authors = [
+    {name = 'Kristof Jozsa'}
+]
+readme = 'README.md'
+requires-python = '>=3.10'
+dynamic = ['dependencies']
+
+[tool.setuptools.dynamic]
+dependencies = {file = ['requirements.txt']}
+
+[build-system]
+requires = ['setuptools>=61.0']
+build-backend = 'setuptools.build_meta'
+
+[project.urls]
+Repository = 'https://github.com/yourusername/jenkins-mcp'
+
+[tool.hatch.build.targets.wheel]
+packages = ['jenkins_mcp']

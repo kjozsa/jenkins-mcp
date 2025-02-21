@@ -1,0 +1,6 @@
+.env
+__pycache__/
+uv.lock
+dist/
+jenkins_mcp.egg-info/
+
