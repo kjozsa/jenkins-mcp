@@ -1,7 +1,17 @@
 # Jenkins MCP
+[![smithery badge](https://smithery.ai/badge/@kjozsa/jenkins-mcp)](https://smithery.ai/server/@kjozsa/jenkins-mcp)
 MCP server for managing Jenkins operations.
 
 ## Installation
+### Installing via Smithery
+
+To install Jenkins MCP for Claude Desktop automatically via [Smithery](https://smithery.ai/server/@kjozsa/jenkins-mcp):
+
+```bash
+npx -y @smithery/cli install @kjozsa/jenkins-mcp --client claude
+```
+
+### Installing Manually
 ```bash
 uvx install jenkins-mcp
 ```
