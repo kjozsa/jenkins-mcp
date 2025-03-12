@@ -2,6 +2,10 @@
 [![smithery badge](https://smithery.ai/badge/@kjozsa/jenkins-mcp)](https://smithery.ai/server/@kjozsa/jenkins-mcp)
 MCP server for managing Jenkins operations.
 
+<a href="https://glama.ai/mcp/servers/7j3zk84u5p">
+  <img width="380" height="200" src="https://glama.ai/mcp/servers/7j3zk84u5p/badge" alt="Jenkins MCP server" />
+</a>
+
 ## Installation
 ### Installing via Smithery
 
