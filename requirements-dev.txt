@@ -1,2 +1,7 @@
 build
 twine
+pytest
+pytest-mock
+requests-mock
+responses
+pytest-cov
