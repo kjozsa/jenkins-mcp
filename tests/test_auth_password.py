@@ -1,8 +1,13 @@
 import pytest
 import os
-from unittest.mock import MagicMock
-import responses
-from jenkins_mcp.server import get_jenkins_crumb, trigger_build
+from unittest.mock import MagicMock, patch
+import requests
+from jenkins_mcp.server import (
+    get_jenkins_crumb,
+    trigger_build,
+    make_jenkins_request,
+    JenkinsContext,
+)
 from mcp.server.fastmcp import Context
 
 
@@ -40,18 +45,33 @@ def mock_jenkins_client():
 
 
 @pytest.fixture
-def mock_context(mock_jenkins_client):
-    """Mock MCP context with Jenkins client"""
+def mock_session():
+    """Mock requests session"""
+    mock_session = MagicMock(spec=requests.Session)
+    mock_session.cookies = {"JSESSIONID": "test-session-id"}
+    return mock_session
 
-    class MockLifespanContext:
-        def __init__(self):
-            self.client = mock_jenkins_client
-            self.crumb_data = {"Jenkins-Crumb": "test-crumb-value"}
-            self.session_cookies = {"JSESSIONID": "test-session-id"}
+
+@pytest.fixture
+def mock_jenkins_context(mock_jenkins_client, mock_session):
+    """Create a mock JenkinsContext"""
+    return JenkinsContext(
+        client=mock_jenkins_client,
+        jenkins_url="http://localhost:8080",
+        username="testuser",
+        password="testpassword",
+        session=mock_session,
+        crumb_data={"Jenkins-Crumb": "test-crumb-value"},
+    )
+
+
+@pytest.fixture
+def mock_context(mock_jenkins_context):
+    """Mock MCP context with Jenkins context"""
 
     class MockRequestContext:
         def __init__(self):
-            self.lifespan_context = MockLifespanContext()
+            self.lifespan_context = mock_jenkins_context
 
     mock_ctx = MagicMock(spec=Context)
     mock_ctx.request_context = MockRequestContext()
@@ -60,37 +80,105 @@ def mock_context(mock_jenkins_client):
 
 def test_get_jenkins_crumb():
     """Test getting CSRF crumb from Jenkins"""
-    with responses.RequestsMock() as rsps:
-        # Mock the crumb API response
-        rsps.add(
-            responses.GET,
-            'http://localhost:8080/crumbIssuer/api/xml?xpath=concat(//crumbRequestField,":",//crumb)',
-            body="Jenkins-Crumb:test-crumb-value",
-            status=200,
-            cookies={"JSESSIONID": "test-session-id"},
-        )
+    mock_session = MagicMock(spec=requests.Session)
+
+    # Mock response
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "crumbRequestField": "Jenkins-Crumb",
+        "crumb": "test-crumb-value",
+    }
+
+    # Configure the mock session to return our mock response
+    mock_session.get.return_value = mock_response
+
+    # Call the function
+    crumb_data = get_jenkins_crumb(
+        mock_session, "http://localhost:8080", "testuser", "testpassword"
+    )
+
+    # Verify response
+    assert crumb_data == {"Jenkins-Crumb": "test-crumb-value"}
+
+    # Verify the session was used correctly
+    mock_session.get.assert_called_once_with(
+        "http://localhost:8080/crumbIssuer/api/json", auth=("testuser", "testpassword")
+    )
+
+
+def test_make_jenkins_request(mock_jenkins_context):
+    """Test making a request to Jenkins with CSRF protection"""
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.text = "Success"
+
+    # Mock the session.request method
+    mock_jenkins_context.session.request.return_value = mock_response
+
+    # Call the function
+    response = make_jenkins_request(mock_jenkins_context, "GET", "api/json")
+
+    # Verify the response
+    assert response.status_code == 200
+    assert response.text == "Success"
+
+    # Verify the request was made with the correct parameters
+    mock_jenkins_context.session.request.assert_called_once_with(
+        "GET",
+        "http://localhost:8080/api/json",
+        auth=("testuser", "testpassword"),
+        headers={"Jenkins-Crumb": "test-crumb-value"},
+        params=None,
+        data=None,
+    )
+
+
+def test_make_jenkins_request_with_retry(mock_jenkins_context):
+    """Test retrying a request when the crumb expires"""
+    # Create mocked responses
+    error_response = MagicMock()
+    error_response.status_code = 403
+    error_response.text = "No valid crumb was included in the request"
+
+    success_response = MagicMock()
+    success_response.status_code = 200
+    success_response.text = "Success"
+
+    # Mock the session.request method to first return an error, then success
+    mock_jenkins_context.session.request.side_effect = [
+        error_response,
+        success_response,
+    ]
+
+    # Mock get_jenkins_crumb to return a new crumb
+    with patch("jenkins_mcp.server.get_jenkins_crumb") as mock_get_crumb:
+        mock_get_crumb.return_value = {"Jenkins-Crumb": "new-crumb-value"}
 
         # Call the function
-        crumb_data, session_cookies = get_jenkins_crumb(
-            "http://localhost:8080", "testuser", "testpassword"
-        )
+        response = make_jenkins_request(mock_jenkins_context, "POST", "api/json")
 
-        # Verify response
-        assert crumb_data == {"Jenkins-Crumb": "test-crumb-value"}
-        assert "JSESSIONID" in session_cookies
-        assert session_cookies["JSESSIONID"] == "test-session-id"
+        # Verify the response
+        assert response.status_code == 200
+        assert response.text == "Success"
+
+        # Verify get_jenkins_crumb was called
+        mock_get_crumb.assert_called_once()
+
+        # Verify the session.request was called twice
+        assert mock_jenkins_context.session.request.call_count == 2
 
 
-def test_trigger_build_with_crumb(mock_context):
+def test_trigger_build(mock_context):
     """Test triggering a build with CSRF crumb"""
-    with responses.RequestsMock() as rsps:
-        # Mock the build job endpoint
-        rsps.add(
-            responses.POST,
-            "http://localhost:8080/job/test-job/build",
-            status=201,
-            headers={"Location": "http://localhost:8080/queue/item/123/"},
-        )
+    # Setup a mock response for the request
+    mock_response = MagicMock()
+    mock_response.status_code = 201
+    mock_response.headers = {"Location": "http://localhost:8080/queue/item/123/"}
+
+    # Mock the make_jenkins_request function
+    with patch("jenkins_mcp.server.make_jenkins_request") as mock_request:
+        mock_request.return_value = mock_response
 
         # Call trigger_build
         result = trigger_build(mock_context, "test-job")
@@ -101,26 +189,25 @@ def test_trigger_build_with_crumb(mock_context):
         assert result["queue_id"] == 123
         assert result["build_number"] == 42
 
-        # Check that the request was made with the crumb
-        request = rsps.calls[0].request
-        assert "Jenkins-Crumb" in request.headers
-        assert request.headers["Jenkins-Crumb"] == "test-crumb-value"
-
-        # Check that the session cookie was included
-        assert "Cookie" in request.headers
-        assert "JSESSIONID=test-session-id" in request.headers["Cookie"]
+        # Check that make_jenkins_request was called correctly
+        mock_request.assert_called_once_with(
+            mock_context.request_context.lifespan_context,
+            "POST",
+            "job/test-job/build",
+            params=None,
+        )
 
 
 def test_trigger_build_with_parameters(mock_context):
     """Test triggering a parameterized build with CSRF crumb"""
-    with responses.RequestsMock() as rsps:
-        # Mock the build with parameters endpoint
-        rsps.add(
-            responses.POST,
-            "http://localhost:8080/job/test-job/buildWithParameters",
-            status=201,
-            headers={"Location": "http://localhost:8080/queue/item/123/"},
-        )
+    # Setup a mock response for the request
+    mock_response = MagicMock()
+    mock_response.status_code = 201
+    mock_response.headers = {"Location": "http://localhost:8080/queue/item/123/"}
+
+    # Mock the make_jenkins_request function
+    with patch("jenkins_mcp.server.make_jenkins_request") as mock_request:
+        mock_request.return_value = mock_response
 
         # Call trigger_build with parameters
         parameters = {"param1": "value1", "param2": "value2"}
@@ -132,31 +219,10 @@ def test_trigger_build_with_parameters(mock_context):
         assert result["queue_id"] == 123
         assert result["build_number"] == 42
 
-        # Check that parameters were included in the request
-        request = rsps.calls[0].request
-        assert "param1=value1" in request.url
-        assert "param2=value2" in request.url
-
-
-def test_fallback_to_standard_method(mock_context, mock_jenkins_client):
-    """Test fallback to standard method when custom request fails"""
-    # Make the custom request fail
-    with responses.RequestsMock() as rsps:
-        rsps.add(
-            responses.POST,
-            "http://localhost:8080/job/test-job/build",
-            status=500,  # Error status to trigger fallback
-        )
-
-        # Call trigger_build
-        result = trigger_build(mock_context, "test-job")
-
-        # Verify result - should use the fallback method
-        assert result["status"] == "triggered"
-        assert result["job_name"] == "test-job"
-        assert result["queue_id"] == 123  # From the mock client
-
-        # Verify the client's build_job method was called
-        mock_jenkins_client.build_job.assert_called_once_with(
-            "test-job", parameters=None
+        # Check that make_jenkins_request was called correctly
+        mock_request.assert_called_once_with(
+            mock_context.request_context.lifespan_context,
+            "POST",
+            "job/test-job/buildWithParameters",
+            params=parameters,
         )
