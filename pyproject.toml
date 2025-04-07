@@ -24,3 +24,8 @@ Repository = 'https://github.com/kjozsa/jenkins-mcp'
 
 [tool.hatch.build.targets.wheel]
 packages = ['jenkins_mcp']
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+pythonpath = ["."]

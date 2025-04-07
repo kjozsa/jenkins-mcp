@@ -23,6 +23,9 @@ ENV PYTHONPATH="/app:$PYTHONPATH"
 ENV JENKINS_URL=https://your-jenkins-server/
 ENV JENKINS_USERNAME=your-username
 ENV JENKINS_PASSWORD=your-password
+# Set to "true" to use API token authentication instead of username/password with crumb
+# When using API token, set JENKINS_PASSWORD to your API token
+ENV JENKINS_USE_API_TOKEN=false
 
 # When running the container, add --db-path and a bind mount to the host's db file
 ENTRYPOINT ["jenkins-mcp"]

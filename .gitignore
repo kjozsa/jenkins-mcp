@@ -3,4 +3,7 @@ __pycache__/
 uv.lock
 dist/
 jenkins_mcp.egg-info/
-
+.pytest_cache/
+*.pyc
+.coverage
+htmlcov/
